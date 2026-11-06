@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MiniMax-H3 Turbo Video</title>
+<style>
+  :root{--bg:#f6f7fb;--card:#fff;--text:#14162a;--muted:#6b7090;--accent:#5b5bf0;--border:#e3e5f0}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1020;--card:#181a30;--text:#eceefb;--muted:#9a9fc4;--accent:#7b7bff;--border:#2a2d4a}}
+  :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  main{max-width:760px;margin:0 auto;padding:24px 16px 48px}
+  h1{margin:0 0 4px;font-size:1.6rem} p.sub{margin:0 0 20px;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:6px}
+  input,textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text);font:inherit}
+  textarea{min-height:96px;resize:vertical}
+  button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:11px 18px;font:inherit;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.55;cursor:wait}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--border);font-weight:500;padding:6px 10px;font-size:.85rem}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  video{width:100%;border-radius:12px;background:#000;margin-top:4px}
+  #status{margin-top:10px;color:var(--muted);font-size:.9rem;min-height:1.2em}
+  #status.err{color:#e5484d}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+  <h1>🎬 MiniMax-H3 Turbo</h1>
+  <p class="sub">Few-step video + audio generation with
+    <a href="https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora" target="_blank" rel="noopener">larryvrh/MiniMax-H3-Turbo-Lora</a>.
+    Runs through Hugging Face Inference Providers; generation can take several minutes.</p>
+
+  <div class="card">
+    <label for="token">Hugging Face token (needs “Make calls to Inference Providers”) —
+      <a href="https://huggingface.co/settings/tokens/new?tokenType=fineGrained" target="_blank" rel="noopener">create one</a></label>
+    <input id="token" type="password" placeholder="hf_..." autocomplete="off">
+    <div class="row"><label style="margin:0;display:flex;gap:6px;align-items:center">
+      <input type="checkbox" id="remember" style="width:auto"> Remember on this device</label></div>
+  </div>
+
+  <div class="card">
+    <label for="prompt">Prompt</label>
+    <textarea id="prompt" placeholder="Describe a scene and its sounds…"></textarea>
+    <div class="row" id="examples"></div>
+    <div class="row"><button id="go">Generate</button></div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <video id="video" controls autoplay loop playsinline></video>
+    <div class="row"><a id="dl" download="h3-turbo.mp4"><button class="ghost" type="button">Download MP4</button></a></div>
+  </div>
+</main>
+
+<script type="module">
+
+const $ = id => document.getElementById(id);
+const EXAMPLES = [
+  "A corgi in a chef hat flipping a pancake, sizzling sounds and a cheerful bark.",
+  "Rain on a neon-lit Tokyo street at night, a cyclist passes by, distant thunder and city hum.",
+  "A violinist on a misty mountain ridge at sunrise, wind and soft strings."
+];
+
+EXAMPLES.forEach(t => {
+  const b = document.createElement("button");
+  b.className = "ghost"; b.type = "button"; b.textContent = t.slice(0, 32) + "…";
+  b.onclick = () => $("prompt").value = t;
+  $("examples").appendChild(b);
+});
+
+try { const saved = localStorage.getItem("hf_token"); if (saved) { $("token").value = saved; $("remember").checked = true; } } catch {}
+
+function status(msg, err = false) { $("status").textContent = msg; $("status").className = err ? "err" : ""; }
+
+$("go").onclick = async () => {
+  const token = $("token").value.trim();
+  const prompt = $("prompt").value.trim();
+  if (!token) return status("Enter your Hugging Face token.", true);
+  if (!prompt) return status("Enter a prompt.", true);
+  try { $("remember").checked ? localStorage.setItem("hf_token", token) : localStorage.removeItem("hf_token"); } catch {}
+
+  $("go").disabled = true;
+  const t0 = Date.now();
+  const timer = setInterval(() => status(`Generating… ${Math.round((Date.now() - t0) / 1000)}s`), 1000);
+  try {
+    const { InferenceClient } = await import("https://esm.sh/@huggingface/inference@3");
+    const client = new InferenceClient(token);
+    const blob = await client.textToVideo({
+      provider: "wavespeed",
+      model: "larryvrh/MiniMax-H3-Turbo-Lora",
+      inputs: prompt
+    });
+    const url = URL.createObjectURL(blob);
+    $("video").src = url; $("dl").href = url; $("result").hidden = false;
+    status(`Done in ${Math.round((Date.now() - t0) / 1000)}s.`);
+  } catch (e) {
+    status("Failed: " + (e.message || e), true);
+  } finally {
+    clearInterval(timer); $("go").disabled = false;
+  }
+};
+</script>
+</body>
+</html>
